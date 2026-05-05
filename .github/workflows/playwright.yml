@@ -1,0 +1,79 @@
+# .github/workflows/playwright.yml
+name: Playwright Tests & Reports
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+  workflow_dispatch: # Allows manual trigger
+
+jobs:
+  test-and-deploy:
+    timeout-minutes: 60
+    runs-on: ubuntu-latest
+    
+    # Required permissions to push to gh-pages branch
+    permissions:
+      contents: write
+      pages: write
+      id-token: write
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: lts/*
+
+    - name: Install dependencies
+      run: npm ci
+
+    - name: Install Playwright Browsers
+      run: npx playwright install --with-deps
+
+    - name: Run Playwright tests
+      run: npx playwright test
+      
+    - name: Generate Allure Report
+      if: always()
+      run: npx allure generate allure-results -o allure-report --clean
+
+    - name: Prepare reports for deployment
+      if: always()
+      run: |
+        mkdir -p public/playwright
+        mkdir -p public/allure
+        
+        # Copy Playwright HTML report
+        cp -R playwright-report/* public/playwright/ || true
+        
+        # Copy Allure report
+        cp -R allure-report/* public/allure/ || true
+        
+        # Create a simple index file to navigate between both reports
+        cat <<EOF > public/index.html
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <title>Test Automation Reports</title>
+          <style>body { font-family: sans-serif; text-align: center; margin-top: 50px; }</style>
+        </head>
+        <body>
+          <h1>Automated Test Reports</h1>
+          <h2><a href="./playwright/index.html">View Playwright HTML Report</a></h2>
+          <h2><a href="./allure/index.html">View Allure Report</a></h2>
+        </body>
+        </html>
+        EOF
+
+    - name: Deploy to GitHub Pages
+      if: always()
+      uses: peaceiris/actions-gh-pages@v4
+      with:
+        github_token: ${{ secrets.GITHUB_TOKEN }}
+        publish_dir: ./public
+        publish_branch: gh-pages
+        keep_files: false
